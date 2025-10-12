@@ -1,6 +1,6 @@
 # slack-mcp-server
 ## Disclaimer
-This project includes [code](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/slack) originally developed by Anthropic and released under the MIT License. Substantial modifications and new functionality have been added by For Good AI Inc. (dba Zencoder Inc.), and are licensed under the Apache License, Version 2.0.
+This project includes [code](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/slack) originally developed by Anthropic and released under the MIT License. Substantial modifications and new functionality have been added by For Good AI Inc. (dba Zencoder Inc.), and are licensed under the Apache License, Version 2.0. Actively is making its own adjustments!
 
 ## Overview
 A Model Context Protocol (MCP) server for interacting with Slack workspaces. This server provides tools to list channels, post messages, reply to threads, add reactions, get channel history, and manage users.
@@ -118,7 +118,7 @@ npm run build
 
 ### Global Installation (NPM)
 ```bash
-npm install -g @zencoderai/slack-mcp-server
+npm install -g @activelyai/slack-mcp-server
 ```
 
 ### Docker Installation
@@ -127,10 +127,10 @@ npm install -g @zencoderai/slack-mcp-server
 docker build -t slack-mcp-server .
 
 # Or pull from Docker Hub
-docker pull zencoderai/slack-mcp:latest
+docker pull hynzk6uuwdrdd9na/slack-mcp:latest
 
 # Or pull a specific version
-docker pull zencoderai/slack-mcp:1.0.0
+docker pull hynzk6uuwdrdd9na/slack-mcp:1.0.0
 ```
 
 ## Configuration
@@ -210,26 +210,26 @@ AUTH_TOKEN=mytoken node dist/index.js --transport http
 docker run --rm \
   -e SLACK_BOT_TOKEN="xoxb-your-bot-token" \
   -e SLACK_TEAM_ID="your-team-id" \
-  zencoderai/slack-mcp:latest
+  hynzk6uuwdrdd9na/slack-mcp:latest
 
 # Run with HTTP transport on port 3000
 docker run --rm -p 3000:3000 \
   -e SLACK_BOT_TOKEN="xoxb-your-bot-token" \
   -e SLACK_TEAM_ID="your-team-id" \
-  zencoderai/slack-mcp:latest --transport http
+  hynzk6uuwdrdd9na/slack-mcp:latest --transport http
 
 # Run with HTTP transport on custom port
 docker run --rm -p 8080:8080 \
   -e SLACK_BOT_TOKEN="xoxb-your-bot-token" \
   -e SLACK_TEAM_ID="your-team-id" \
-  zencoderai/slack-mcp:latest --transport http --port 8080
+  hynzk6uuwdrdd9na/slack-mcp:latest --transport http --port 8080
 
 # Run with custom auth token
 docker run --rm -p 3000:3000 \
   -e SLACK_BOT_TOKEN="xoxb-your-bot-token" \
   -e SLACK_TEAM_ID="your-team-id" \
   -e AUTH_TOKEN="mytoken" \
-  zencoderai/slack-mcp:latest --transport http
+  hynzk6uuwdrdd9na/slack-mcp:latest --transport http
 ```
 
 #### Using Docker Compose
@@ -241,7 +241,7 @@ version: '3.8'
 services:
   slack-mcp:
     # Use published image:
-    image: zencoderai/slack-mcp:latest
+    image: hynzk6uuwdrdd9na/slack-mcp:latest
     # Or build locally:
     # build: .
     environment:
