@@ -1,15 +1,15 @@
 {
-  "name": "@zencoderai/slack-mcp-server",
+  "name": "@activelyai/slack-mcp-server",
   "version": "0.0.0-dev",
   "description": "MCP server for interacting with Slack",
   "license": "MIT",
-  "author": "Zencoder AI (https://zencoder.ai)",
-  "homepage": "https://zencoder.ai",
+  "author": "Actively AI (https://actively.ai)",
+  "homepage": "https://actively.ai",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zencoderai/slack-mcp-server"
+    "url": "https://github.com/actively-ai/slack-mcp-server"
   },
-  "bugs": "https://github.com/zencoderai/slack-mcp-server/issues",
+  "bugs": "https://github.com/actively-ai/slack-mcp-server/issues",
   "type": "module",
   "bin": {
     "slack-mcp": "dist/index.js"

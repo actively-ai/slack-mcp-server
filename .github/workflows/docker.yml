@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: zencoderai/slack-mcp
+  IMAGE_NAME: hynzk6uuwdrdd9na/slack-mcp
 
 jobs:
   build-and-push:
