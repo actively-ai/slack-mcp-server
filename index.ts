@@ -52,6 +52,9 @@ interface GetUserProfileArgs {
 
 export class SlackClient {
   private botHeaders: { Authorization: string; "Content-Type": string };
+  private channelCache: Map<string, any[]> = new Map(); // key: normalized channel name, value: array of channel objects
+  private channelCacheById: Map<string, any> = new Map(); // key: channel ID, value: channel object
+  private cacheInitialized: boolean = false;
 
   constructor(botToken: string) {
     this.botHeaders = {
@@ -218,6 +221,75 @@ export class SlackClient {
 
     return response.json();
   }
+
+  // TODO: Add TTL-based cache refresh mechanism in the future
+  async initializeChannelCache(): Promise<void> {
+    if (this.cacheInitialized) {
+      return;
+    }
+
+    console.error("Initializing channel cache...");
+
+    const allChannels: any[] = [];
+    let cursor: string | undefined = undefined;
+    let pageCount = 0;
+
+    // Fetch all channels via pagination
+    do {
+      pageCount++;
+      const response = await this.getChannels(200, cursor);
+
+      if (!response.ok) {
+        console.error("Failed to fetch channels:", response.error);
+        throw new Error(`Failed to initialize channel cache: ${response.error}`);
+      }
+
+      const channels = response.channels || [];
+      allChannels.push(...channels);
+
+      console.error(`Fetched page ${pageCount}: ${channels.length} channels (${allChannels.length} total)`);
+
+      cursor = response.response_metadata?.next_cursor;
+    } while (cursor);
+
+    // Populate both cache maps
+    for (const channel of allChannels) {
+      // Normalize channel name (lowercase, strip # prefix if present)
+      const normalizedName = channel.name.toLowerCase().replace(/^#/, "");
+
+      // Store by name (handle collisions by using array)
+      if (!this.channelCache.has(normalizedName)) {
+        this.channelCache.set(normalizedName, []);
+      }
+      this.channelCache.get(normalizedName)!.push(channel);
+
+      // Store by ID
+      this.channelCacheById.set(channel.id, channel);
+    }
+
+    this.cacheInitialized = true;
+    console.error(`Channel cache initialized: ${allChannels.length} channels indexed`);
+  }
+
+  searchChannelsByName(query: string): any[] {
+    if (!this.cacheInitialized) {
+      throw new Error("Channel cache not initialized. Call initializeChannelCache() first.");
+    }
+
+    // Normalize query (lowercase, strip # prefix)
+    const normalizedQuery = query.toLowerCase().replace(/^#/, "");
+
+    const results: any[] = [];
+
+    // Search through cache for partial matches
+    for (const [name, channels] of this.channelCache.entries()) {
+      if (name.includes(normalizedQuery)) {
+        results.push(...channels);
+      }
+    }
+
+    return results;
+  }
 }
 
 export function createSlackServer(slackClient: SlackClient): McpServer {
@@ -241,6 +313,23 @@ export function createSlackServer(slackClient: SlackClient): McpServer {
       const response = await slackClient.getChannels(limit, cursor);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    }
+  );
+
+  server.registerTool(
+    "slack_search_channels",
+    {
+      title: "Search Slack Channels",
+      description: "Search for channels by name using the cached channel list. Supports partial, case-insensitive matching. Strips # prefix from query automatically.",
+      inputSchema: {
+        query: z.string().describe("Channel name to search for (partial match, case-insensitive, # prefix optional)"),
+      },
+    },
+    async ({ query }) => {
+      const results = slackClient.searchChannelsByName(query);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ok: true, channels: results, count: results.length }) }],
       };
     }
   );
@@ -589,6 +678,7 @@ export async function main() {
   }
 
   const slackClient = new SlackClient(botToken);
+  await slackClient.initializeChannelCache();
   let httpServer: any = null;
 
   // Setup graceful shutdown handlers
