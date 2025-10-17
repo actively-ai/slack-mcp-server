@@ -300,24 +300,6 @@ export function createSlackServer(slackClient: SlackClient): McpServer {
 
   // Register all Slack tools using the modern API
   server.registerTool(
-    "slack_list_channels",
-    {
-      title: "List Slack Channels",
-      description: "List public and private channels that the bot is a member of, or pre-defined channels in the workspace with pagination",
-      inputSchema: {
-        limit: z.number().optional().default(100).describe("Maximum number of channels to return (default 100, max 200)"),
-        cursor: z.string().optional().describe("Pagination cursor for next page of results"),
-      },
-    },
-    async ({ limit, cursor }) => {
-      const response = await slackClient.getChannels(limit, cursor);
-      return {
-        content: [{ type: "text", text: JSON.stringify(response) }],
-      };
-    }
-  );
-
-  server.registerTool(
     "slack_search_channels",
     {
       title: "Search Slack Channels",
