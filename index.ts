@@ -414,10 +414,10 @@ export function createSlackServer(slackClient: SlackClient): McpServer {
     "slack_get_channel_history",
     {
       title: "Get Slack Channel History",
-      description: "Get messages from a channel within a time range. Defaults to last 24 hours if no time range specified. Accepts ISO date strings, Unix timestamps, or Slack timestamps. Messages matching the oldest/latest timestamps are included.",
+      description: "Get messages from a channel within a time range. Defaults to last 24 hours if no time range specified. Accepts ISO date strings, Unix timestamps, or Slack timestamps. Messages matching the oldest/latest timestamps are included. NOTE: Requires a channel ID - use slack_search_channels first to find the channel ID by name.",
       inputSchema: {
-        channel_id: z.string().describe("The ID of the channel"),
-        oldest: z.union([z.string(), z.number()]).optional().describe("Start of time range (ISO date like '2024-01-15T10:00:00Z', Unix timestamp, or Slack timestamp like '1234567890.123456'). Defaults to 24 hours ago. Messages with this exact timestamp are included."),
+        channel_id: z.string().describe("The ID of the channel (e.g., 'C1234567890'). Use slack_search_channels to find the channel ID from a channel name."),
+        oldest: z.union([z.string(), z.number()]).optional().describe("Start of time range. Accepts: ISO date string (e.g., '2024-01-15T10:00:00Z'), Unix timestamp in seconds (e.g., 1609459200), or Slack timestamp (e.g., '1609459200.123456'). For relative times, calculate from current time (e.g., for last 72 hours: Date.now()/1000 - 72*60*60). Defaults to 24 hours ago if not specified. Messages with this exact timestamp are included."),
         latest: z.union([z.string(), z.number()]).optional().describe("End of time range (ISO date, Unix timestamp, or Slack timestamp). Defaults to now. Messages with this exact timestamp are included."),
       },
     },
