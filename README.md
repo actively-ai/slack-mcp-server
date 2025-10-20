@@ -3,19 +3,20 @@
 This project includes [code](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/slack) originally developed by Anthropic and released under the MIT License. Substantial modifications and new functionality have been added by For Good AI Inc. (dba Zencoder Inc.), and are licensed under the Apache License, Version 2.0. Actively is making its own adjustments!
 
 ## Overview
-A Model Context Protocol (MCP) server for interacting with Slack workspaces. This server provides tools to list channels, post messages, reply to threads, add reactions, get channel history, and manage users.
+A Model Context Protocol (MCP) server for interacting with Slack workspaces. This server provides tools to search channels, post messages, reply to threads, add reactions, get channel history, and manage users.
 
 ## Available Tools
 
-1. **slack_list_channels**
-   - List public or pre-defined channels in the workspace
-   - Optional inputs:
-     - `limit` (number, default: 100, max: 200): Maximum number of channels to return
-     - `cursor` (string): Pagination cursor for next page
-   - Returns: List of channels with their IDs and information
+1. **slack_search_channels**
+   - Search for channels by name using the cached channel list
+   - Supports partial, case-insensitive matching
+   - Automatically strips # prefix from queries
+   - Required inputs:
+     - `query` (string): Channel name to search for (partial match, case-insensitive, # prefix optional)
+   - Returns: List of matching channels with their IDs and information
 
 2. **slack_post_message**
-   - Post a new message to a Slack channel
+   - Post a new message to a Slack channel or direct message to user
    - Required inputs:
      - `channel_id` (string): The ID of the channel to post to
      - `text` (string): The message text to post
@@ -25,7 +26,7 @@ A Model Context Protocol (MCP) server for interacting with Slack workspaces. Thi
    - Reply to a specific message thread
    - Required inputs:
      - `channel_id` (string): The channel containing the thread
-     - `thread_ts` (string): Timestamp of the parent message
+     - `thread_ts` (string): Timestamp of the parent message in the format '1234567890.123456'. Timestamps without the period can be converted by adding the period such that 6 numbers come after it.
      - `text` (string): The reply text
    - Returns: Reply confirmation and timestamp
 
@@ -49,7 +50,7 @@ A Model Context Protocol (MCP) server for interacting with Slack workspaces. Thi
    - Get all replies in a message thread
    - Required inputs:
      - `channel_id` (string): The channel containing the thread
-     - `thread_ts` (string): Timestamp of the parent message
+     - `thread_ts` (string): Timestamp of the parent message in the format '1234567890.123456'. Timestamps without the period can be converted by adding the period such that 6 numbers come after it.
    - Returns: List of replies with their content and metadata
 
 7. **slack_get_users**
@@ -65,6 +66,16 @@ A Model Context Protocol (MCP) server for interacting with Slack workspaces. Thi
      - `user_id` (string): The user's ID
    - Returns: Detailed user profile information
 
+## How Channel Search Works
+
+The server initializes a local cache of all workspace channels on startup. The `slack_search_channels` tool performs fast, client-side searches against this cache rather than making API calls for each search. This provides:
+- Faster search responses
+- Partial name matching (e.g., searching "gen" will find "general")
+- Case-insensitive matching
+- Automatic # prefix handling
+
+The cache is built once during server initialization by fetching all channels via pagination.
+
 ## Slack Bot Setup
 
 To use this MCP server, you need to create a Slack app and configure it with the necessary permissions:
@@ -77,12 +88,18 @@ To use this MCP server, you need to create a Slack app and configure it with the
 
 ### 2. Configure Bot Token Scopes
 Navigate to "OAuth & Permissions" and add these scopes:
+
+**Required scopes:**
 - `channels:history` - View messages and other content in public channels
 - `channels:read` - View basic channel information
 - `chat:write` - Send messages as the app
 - `reactions:write` - Add emoji reactions to messages
 - `users:read` - View users and their basic information
 - `users.profile:read` - View detailed profiles about users
+
+**Additional scopes for private channel access:**
+- `groups:history` - View messages in private channels
+- `groups:read` - View basic private channel information
 
 ### 3. Install App to Workspace
 - Click "Install to Workspace" and authorize the app
@@ -99,7 +116,7 @@ For the bot to access private channels or to post messages, you may need to invi
 - **Multiple Transport Support**: Supports both stdio and Streamable HTTP transports
 - **Modern MCP SDK**: Updated to use the latest MCP SDK (v1.13.2) with modern APIs
 - **Comprehensive Slack Integration**: Full set of Slack operations including:
-  - List channels (with predefined channel support)
+  - Search channels (with caching for fast partial-match searches)
   - Post messages
   - Reply to threads
   - Add reactions
