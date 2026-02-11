@@ -56,11 +56,31 @@ export class SlackClient {
   private channelCacheById: Map<string, any> = new Map(); // key: channel ID, value: channel object
   private cacheInitialized: boolean = false;
 
+  // Loading message patterns to strip from bot responses
+  private static readonly LOADING_MESSAGE_PATTERNS: RegExp[] = [
+    // Match the full loading message with checkmark and bullet points
+    /:white_check_mark:\s*Analysis complete:\s*•\s*Validating conversation history\.\.\.\s*•\s*Optimizing context\.\.\.\s*•\s*Loading business context\.\.\.\s*•\s*Loading account research\.\.\.\s*/gi,
+    // Match variations with newlines instead of spaces
+    /:white_check_mark:\s*Analysis complete:\s*\n?•\s*Validating conversation history\.\.\.\s*\n?•\s*Optimizing context\.\.\.\s*\n?•\s*Loading business context\.\.\.\s*\n?•\s*Loading account research\.\.\.\s*\n?/gi,
+  ];
+
   constructor(botToken: string) {
     this.botHeaders = {
       Authorization: `Bearer ${botToken}`,
       "Content-Type": "application/json",
     };
+  }
+
+  /**
+   * Strips loading/status messages from text before posting to Slack
+   */
+  private static stripLoadingMessages(text: string): string {
+    let result = text;
+    for (const pattern of SlackClient.LOADING_MESSAGE_PATTERNS) {
+      result = result.replace(pattern, '');
+    }
+    // Clean up any resulting double newlines or leading/trailing whitespace
+    return result.replace(/\n{3,}/g, '\n\n').trim();
   }
 
   async getChannels(limit: number = 100, cursor?: string): Promise<any> {
@@ -112,12 +132,13 @@ export class SlackClient {
   }
 
   async postMessage(channel_id: string, text: string): Promise<any> {
+    const filteredText = SlackClient.stripLoadingMessages(text);
     const response = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: this.botHeaders,
       body: JSON.stringify({
         channel: channel_id,
-        text: text,
+        text: filteredText,
       }),
     });
 
@@ -129,13 +150,14 @@ export class SlackClient {
     thread_ts: string,
     text: string,
   ): Promise<any> {
+    const filteredText = SlackClient.stripLoadingMessages(text);
     const response = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: this.botHeaders,
       body: JSON.stringify({
         channel: channel_id,
         thread_ts: thread_ts,
-        text: text,
+        text: filteredText,
       }),
     });
 
