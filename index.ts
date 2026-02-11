@@ -50,6 +50,15 @@ interface GetUserProfileArgs {
   user_id: string;
 }
 
+interface CreateChannelArgs {
+  name: string;
+  is_private?: boolean;
+}
+
+interface TestChannelPermissionsArgs {
+  test_channel_name?: string;
+}
+
 export class SlackClient {
   private botHeaders: { Authorization: string; "Content-Type": string };
   private channelCache: Map<string, any[]> = new Map(); // key: normalized channel name, value: array of channel objects
@@ -61,6 +70,61 @@ export class SlackClient {
       Authorization: `Bearer ${botToken}`,
       "Content-Type": "application/json",
     };
+  }
+
+  /**
+   * Log Slack API errors with structured data for observability
+   * This emits metrics that can be ingested by monitoring systems like Datadog
+   */
+  private logSlackApiError(method: string, url: string, status: number, error: any, context?: Record<string, any>): void {
+    const errorLog = {
+      event: "slack_api_error",
+      method: method,
+      url: url,
+      status: status,
+      error: error.error || error,
+      error_detail: error.detail || error.response_metadata || "No additional details",
+      timestamp: new Date().toISOString(),
+      ...context
+    };
+
+    console.error(JSON.stringify(errorLog));
+
+    // Emit specific metrics for permission errors
+    if (error.error === "restricted_action" || error.error === "missing_scope" || error.error === "not_allowed_token_type") {
+      console.error(JSON.stringify({
+        event: "slack_permission_error",
+        metric: "slack.api.permission_denied",
+        error_type: error.error,
+        method: method,
+        timestamp: new Date().toISOString(),
+        ...context
+      }));
+    }
+
+    // Emit metric for any API failure
+    console.error(JSON.stringify({
+      event: "slack_api_failure_metric",
+      metric: "slack.api.error",
+      error_type: error.error || "unknown",
+      method: method,
+      count: 1,
+      timestamp: new Date().toISOString()
+    }));
+  }
+
+  /**
+   * Log successful Slack API calls for observability
+   */
+  private logSlackApiSuccess(method: string, context?: Record<string, any>): void {
+    console.error(JSON.stringify({
+      event: "slack_api_success",
+      metric: "slack.api.success",
+      method: method,
+      count: 1,
+      timestamp: new Date().toISOString(),
+      ...context
+    }));
   }
 
   async getChannels(limit: number = 100, cursor?: string): Promise<any> {
@@ -121,7 +185,15 @@ export class SlackClient {
       }),
     });
 
-    return response.json();
+    const data = await response.json();
+
+    if (!data.ok) {
+      this.logSlackApiError("chat.postMessage", "https://slack.com/api/chat.postMessage", response.status, data, { channel_id });
+    } else {
+      this.logSlackApiSuccess("chat.postMessage", { channel_id, message_ts: data.ts });
+    }
+
+    return data;
   }
 
   async postReply(
@@ -220,6 +292,118 @@ export class SlackClient {
     );
 
     return response.json();
+  }
+
+  async createChannel(name: string, is_private: boolean = false): Promise<any> {
+    const response = await fetch("https://slack.com/api/conversations.create", {
+      method: "POST",
+      headers: this.botHeaders,
+      body: JSON.stringify({
+        name: name,
+        is_private: is_private,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!data.ok) {
+      this.logSlackApiError("conversations.create", "https://slack.com/api/conversations.create", response.status, data, { 
+        channel_name: name, 
+        is_private: is_private 
+      });
+
+      // Special handling for restricted_action error
+      if (data.error === "restricted_action") {
+        console.error(JSON.stringify({
+          event: "slack_restricted_action_error",
+          metric: "slack.channel.creation_blocked",
+          error_type: "restricted_action",
+          message: "Team preference prevents the authenticated user from creating channels. The workspace admin needs to modify Slack settings to allow channel creation.",
+          action_required: "Contact workspace admin to enable channel creation permissions",
+          channel_name: name,
+          is_private: is_private,
+          count: 1,
+          timestamp: new Date().toISOString()
+        }));
+      }
+    } else {
+      this.logSlackApiSuccess("conversations.create", { 
+        channel_id: data.channel?.id, 
+        channel_name: name,
+        is_private: is_private
+      });
+    }
+
+    return data;
+  }
+
+  async testChannelCreationPermissions(testChannelName?: string): Promise<any> {
+    const timestamp = Date.now();
+    const channelName = testChannelName || `permission-test-${timestamp}`;
+    
+    console.error(JSON.stringify({
+      event: "testing_channel_permissions",
+      test_channel_name: channelName,
+      timestamp: new Date().toISOString()
+    }));
+
+    // Attempt to create a test channel
+    const createResult = await this.createChannel(channelName, false);
+
+    const result: any = {
+      can_create_channels: createResult.ok,
+      test_channel_name: channelName,
+      timestamp: new Date().toISOString()
+    };
+
+    if (createResult.ok) {
+      result.channel_id = createResult.channel?.id;
+      result.message = "Successfully created test channel. Channel creation permissions are working.";
+
+      // Attempt to archive the test channel to clean up
+      try {
+        const archiveResponse = await fetch("https://slack.com/api/conversations.archive", {
+          method: "POST",
+          headers: this.botHeaders,
+          body: JSON.stringify({
+            channel: createResult.channel.id,
+          }),
+        });
+
+        const archiveData = await archiveResponse.json();
+        result.test_channel_archived = archiveData.ok;
+        
+        if (archiveData.ok) {
+          console.error(JSON.stringify({
+            event: "test_channel_cleaned_up",
+            channel_id: createResult.channel.id,
+            timestamp: new Date().toISOString()
+          }));
+        }
+      } catch (error) {
+        result.cleanup_error = "Failed to archive test channel";
+        console.error(JSON.stringify({
+          event: "test_cleanup_failed",
+          error: String(error),
+          timestamp: new Date().toISOString()
+        }));
+      }
+    } else {
+      result.error = createResult.error;
+      result.error_detail = createResult.detail || "No additional details";
+      result.message = createResult.error === "restricted_action" 
+        ? "PERMISSION DENIED: Workspace settings prevent channel creation. Contact your Slack workspace admin to enable channel creation permissions."
+        : `Channel creation failed: ${createResult.error}`;
+
+      console.error(JSON.stringify({
+        event: "channel_permission_test_failed",
+        error: createResult.error,
+        can_create_channels: false,
+        timestamp: new Date().toISOString()
+      }));
+    }
+
+    return result;
   }
 
   // TODO: Add TTL-based cache refresh mechanism in the future
@@ -437,6 +621,41 @@ export function createSlackServer(slackClient: SlackClient): McpServer {
     },
     async ({ user_id }) => {
       const response = await slackClient.getUserProfile(user_id);
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    }
+  );
+
+  server.registerTool(
+    "slack_create_channel",
+    {
+      title: "Create Slack Channel",
+      description: "Create a new Slack channel. Note: This may fail with 'restricted_action' error if workspace settings prevent channel creation. Use slack_test_channel_permissions to check permissions first.",
+      inputSchema: {
+        name: z.string().describe("The name of the channel to create (lowercase, no spaces, hyphens allowed)"),
+        is_private: z.boolean().optional().default(false).describe("Whether to create a private channel (default: false)"),
+      },
+    },
+    async ({ name, is_private }) => {
+      const response = await slackClient.createChannel(name, is_private);
+      return {
+        content: [{ type: "text", text: JSON.stringify(response) }],
+      };
+    }
+  );
+
+  server.registerTool(
+    "slack_test_channel_permissions",
+    {
+      title: "Test Slack Channel Creation Permissions",
+      description: "Test if the bot has permissions to create channels by attempting to create and archive a test channel. Use this during Slack integration setup to verify permissions. Returns detailed information about permission status and any errors.",
+      inputSchema: {
+        test_channel_name: z.string().optional().describe("Optional custom name for test channel (will be auto-generated if not provided)"),
+      },
+    },
+    async ({ test_channel_name }) => {
+      const response = await slackClient.testChannelCreationPermissions(test_channel_name);
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
       };

@@ -66,6 +66,23 @@ A Model Context Protocol (MCP) server for interacting with Slack workspaces. Thi
      - `user_id` (string): The user's ID
    - Returns: Detailed user profile information
 
+9. **slack_create_channel**
+   - Create a new Slack channel
+   - Required inputs:
+     - `name` (string): Channel name (lowercase, no spaces, hyphens allowed)
+   - Optional inputs:
+     - `is_private` (boolean, default: false): Whether to create a private channel
+   - Returns: Created channel information or error details
+   - Note: May fail with `restricted_action` error if workspace settings prevent channel creation
+
+10. **slack_test_channel_permissions**
+   - Test if the bot has permissions to create channels
+   - Creates and archives a test channel to verify permissions
+   - Optional inputs:
+     - `test_channel_name` (string): Custom name for test channel (auto-generated if not provided)
+   - Returns: Detailed permission test results
+   - Recommended: Run this during Slack integration setup to verify configuration
+
 ## How Channel Search Works
 
 The server initializes a local cache of all workspace channels on startup. The `slack_search_channels` tool performs fast, client-side searches against this cache rather than making API calls for each search. This provides:
@@ -75,6 +92,40 @@ The server initializes a local cache of all workspace channels on startup. The `
 - Automatic # prefix handling
 
 The cache is built once during server initialization by fetching all channels via pagination.
+
+## Observability and Metrics
+
+The server emits structured JSON logs to stderr for all Slack API operations, which can be ingested by monitoring systems like Datadog, CloudWatch, or other log aggregators. These logs include:
+
+### Success Metrics
+- `slack.api.success` - Emitted on successful API calls with method details
+
+### Error Metrics
+- `slack.api.error` - Emitted on any Slack API failure
+- `slack.api.permission_denied` - Emitted on permission-related errors
+- `slack.channel.creation_blocked` - Emitted specifically when channel creation is blocked by workspace settings
+
+### Log Format
+All logs are structured JSON with the following fields:
+- `event`: Event type (e.g., "slack_api_error", "slack_api_success")
+- `metric`: Metric name for monitoring systems
+- `method`: Slack API method called
+- `timestamp`: ISO 8601 timestamp
+- `error`: Error code (for failures)
+- Additional context fields specific to each operation
+
+### Permission Detection
+The server provides special handling for the `restricted_action` error that occurs when workspace settings prevent operations like channel creation. This is logged with detailed information including:
+- Error type and description
+- Required action (contact workspace admin)
+- Operation attempted
+- Dedicated metric for alerting
+
+### Recommended Monitoring
+Set up alerts in your monitoring system for:
+1. `slack.api.permission_denied` - Alert when permission errors occur
+2. `slack.channel.creation_blocked` - Alert when channel creation is blocked
+3. High error rates on `slack.api.error` - General API failure monitoring
 
 ## Slack Bot Setup
 
@@ -92,6 +143,7 @@ Navigate to "OAuth & Permissions" and add these scopes:
 **Required scopes:**
 - `channels:history` - View messages and other content in public channels
 - `channels:read` - View basic channel information
+- `channels:manage` - Create and manage public channels
 - `chat:write` - Send messages as the app
 - `reactions:write` - Add emoji reactions to messages
 - `users:read` - View users and their basic information
@@ -100,6 +152,7 @@ Navigate to "OAuth & Permissions" and add these scopes:
 **Additional scopes for private channel access:**
 - `groups:history` - View messages in private channels
 - `groups:read` - View basic private channel information
+- `groups:write` - Create and manage private channels
 
 ### 3. Install App to Workspace
 - Click "Install to Workspace" and authorize the app
