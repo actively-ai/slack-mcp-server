@@ -167,6 +167,78 @@ describe('SlackClient', () => {
     );
   });
 
+  test('postMessage strips loading message from text', async () => {
+    const mockResponse = {
+      ok: true,
+      channel: 'C123456',
+      ts: '1234567890.123456',
+      message: {
+        text: 'Hello, world!',
+        user: 'U123456',
+        ts: '1234567890.123456',
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    const textWithLoadingMessage = ':white_check_mark: Analysis complete: • Validating conversation history... • Optimizing context... • Loading business context... • Loading account research... Hello, world!';
+    const result = await slackClient.postMessage('C123456', textWithLoadingMessage);
+
+    expect(result).toEqual(mockResponse);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://slack.com/api/chat.postMessage',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer xoxb-test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel: 'C123456',
+          text: 'Hello, world!',
+        }),
+      }
+    );
+  });
+
+  test('postMessage strips loading message with newlines', async () => {
+    const mockResponse = {
+      ok: true,
+      channel: 'C123456',
+      ts: '1234567890.123456',
+      message: {
+        text: 'Hello, world!',
+        user: 'U123456',
+        ts: '1234567890.123456',
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    const textWithLoadingMessage = ':white_check_mark: Analysis complete:\n• Validating conversation history...\n• Optimizing context...\n• Loading business context...\n• Loading account research...\nHello, world!';
+    const result = await slackClient.postMessage('C123456', textWithLoadingMessage);
+
+    expect(result).toEqual(mockResponse);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://slack.com/api/chat.postMessage',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer xoxb-test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel: 'C123456',
+          text: 'Hello, world!',
+        }),
+      }
+    );
+  });
+
   test('postReply successful response', async () => {
     const mockResponse = {
       ok: true,
@@ -185,6 +257,44 @@ describe('SlackClient', () => {
     });
 
     const result = await slackClient.postReply('C123456', '1234567890.123456', 'Reply text');
+
+    expect(result).toEqual(mockResponse);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://slack.com/api/chat.postMessage',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer xoxb-test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel: 'C123456',
+          thread_ts: '1234567890.123456',
+          text: 'Reply text',
+        }),
+      }
+    );
+  });
+
+  test('postReply strips loading message from text', async () => {
+    const mockResponse = {
+      ok: true,
+      channel: 'C123456',
+      ts: '1234567890.123457',
+      message: {
+        text: 'Reply text',
+        user: 'U123456',
+        ts: '1234567890.123457',
+        thread_ts: '1234567890.123456',
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    const textWithLoadingMessage = ':white_check_mark: Analysis complete: • Validating conversation history... • Optimizing context... • Loading business context... • Loading account research... Reply text';
+    const result = await slackClient.postReply('C123456', '1234567890.123456', textWithLoadingMessage);
 
     expect(result).toEqual(mockResponse);
     expect(mockFetch).toHaveBeenCalledWith(
