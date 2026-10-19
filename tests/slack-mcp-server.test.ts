@@ -359,6 +359,181 @@ describe('SlackClient', () => {
       })
     );
   });
+
+  test('createChannel successful response', async () => {
+    const mockResponse = {
+      ok: true,
+      channel: {
+        id: 'C987654',
+        name: 'new-channel',
+        is_private: false,
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    // Mock console.error to suppress log output
+    const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await slackClient.createChannel('new-channel', false);
+
+    expect(result).toEqual(mockResponse);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://slack.com/api/conversations.create',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer xoxb-test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'new-channel',
+          is_private: false,
+        }),
+      }
+    );
+
+    mockConsoleError.mockRestore();
+  });
+
+  test('createChannel restricted_action error', async () => {
+    const mockResponse = {
+      ok: false,
+      error: 'restricted_action',
+      detail: 'A team preference prevents the authenticated user from creating channels',
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    // Mock console.error to capture log output
+    const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await slackClient.createChannel('new-channel', false);
+
+    expect(result).toEqual(mockResponse);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('restricted_action');
+    
+    // Verify that error logging was called
+    expect(mockConsoleError).toHaveBeenCalled();
+    
+    // Check that restricted_action specific log was emitted
+    const logCalls = mockConsoleError.mock.calls.map(call => call[0]);
+    const restrictedActionLog = logCalls.find(log => {
+      try {
+        const parsed = JSON.parse(log);
+        return parsed.event === 'slack_restricted_action_error';
+      } catch {
+        return false;
+      }
+    });
+    expect(restrictedActionLog).toBeDefined();
+
+    mockConsoleError.mockRestore();
+  });
+
+  test('testChannelCreationPermissions success', async () => {
+    const mockCreateResponse = {
+      ok: true,
+      channel: {
+        id: 'C999999',
+        name: 'permission-test-123',
+        is_private: false,
+      },
+    };
+
+    const mockArchiveResponse = {
+      ok: true,
+    };
+
+    mockFetch
+      .mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockCreateResponse),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockArchiveResponse),
+      });
+
+    // Mock console.error to suppress log output
+    const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await slackClient.testChannelCreationPermissions('permission-test-123');
+
+    expect(result.can_create_channels).toBe(true);
+    expect(result.test_channel_name).toBe('permission-test-123');
+    expect(result.channel_id).toBe('C999999');
+    expect(result.test_channel_archived).toBe(true);
+    expect(result.message).toContain('Successfully created test channel');
+
+    mockConsoleError.mockRestore();
+  });
+
+  test('testChannelCreationPermissions failure', async () => {
+    const mockCreateResponse = {
+      ok: false,
+      error: 'restricted_action',
+      detail: 'A team preference prevents the authenticated user from creating channels',
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      json: () => Promise.resolve(mockCreateResponse),
+    });
+
+    // Mock console.error to suppress log output
+    const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await slackClient.testChannelCreationPermissions('permission-test-456');
+
+    expect(result.can_create_channels).toBe(false);
+    expect(result.error).toBe('restricted_action');
+    expect(result.message).toContain('PERMISSION DENIED');
+    expect(result.message).toContain('workspace admin');
+
+    mockConsoleError.mockRestore();
+  });
+
+  test('postMessage logs errors on failure', async () => {
+    const mockResponse = {
+      ok: false,
+      error: 'channel_not_found',
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    // Mock console.error to capture log output
+    const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await slackClient.postMessage('C123456', 'Hello');
+
+    expect(result).toEqual(mockResponse);
+    expect(mockConsoleError).toHaveBeenCalled();
+    
+    // Check that error log was emitted
+    const logCalls = mockConsoleError.mock.calls.map(call => call[0]);
+    const errorLog = logCalls.find(log => {
+      try {
+        const parsed = JSON.parse(log);
+        return parsed.event === 'slack_api_error';
+      } catch {
+        return false;
+      }
+    });
+    expect(errorLog).toBeDefined();
+
+    mockConsoleError.mockRestore();
+  });
 });
 
 describe('createSlackServer', () => {
